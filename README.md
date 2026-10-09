@@ -60,7 +60,11 @@ Secure-Task/
 │   └── screenshots/       # UI screenshots (to be added)
 ├── .env.example           # Template for required environment variables
 ├── .gitignore
+├── .dockerignore
+├── Dockerfile
+├── docker-compose.yml
 ├── requirements.txt
+├── requirements-dev.txt
 └── README.md
 ```
 
@@ -102,6 +106,43 @@ environment variable.
 By default the app stores data in a local SQLite file (`securetask.db`), created
 automatically on first run. This file is listed in `.gitignore` and is not committed.
 
+## Run with Docker
+
+This runs the app together with a real PostgreSQL database, both inside containers.
+Requires Docker Desktop to be installed and running.
+
+```powershell
+# 1. Clone the repository (skip if you already have it)
+git clone https://github.com/Muskan-3/Secure-Task.git
+cd Secure-Task
+
+# 2. Create your local environment file and fill in real values:
+#    a random SECRET_KEY, and your own POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+Copy-Item .env.example .env
+# Generate a key with:
+# python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# 3. Build the images and start both containers in the background
+docker compose up -d --build
+
+# 4. Open the app
+#    http://localhost:8000/        (web UI)
+#    http://localhost:8000/docs    (API docs)
+#    http://localhost:8000/health  (health check)
+
+# 5. When you're done, stop the containers
+docker compose down
+```
+
+`docker compose down` stops and removes the containers but keeps your database data in a
+named Docker volume. Running `docker compose up -d` again brings your data right back.
+Adding `-v` to the down command (`docker compose down -v`) additionally deletes that
+volume and permanently erases the database.
+
+These exact commands were run against this project to confirm they work, including
+registering a user, logging in, creating a task, and confirming the task survives an
+`app` container restart.
+
 ## API endpoints
 
 | Method | Path | Auth required | Description |
@@ -142,7 +183,7 @@ Automated tests are not written yet. See the Roadmap section below.
 ## Roadmap (planned)
 
 - [ ] Automated tests (pytest) with coverage reporting
-- [ ] Dockerfile and docker-compose setup
+- [x] Dockerfile and docker-compose setup
 - [ ] CI pipeline (GitHub Actions) to run tests and lint on every push
 - [ ] Static security scanning (Semgrep)
 - [ ] Dependency vulnerability scanning (pip-audit)
