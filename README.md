@@ -182,16 +182,31 @@ Automated tests are not written yet. See the Roadmap section below.
   the logged-in user, so one account can never read, edit, or delete another account's
   tasks.
 
+## Security scanning
+
+The CI pipeline runs four automated security scans on every push and pull request, in
+addition to the test suite. Each one checks for a different kind of problem:
+
+| Tool | Checks for |
+|---|---|
+| Semgrep | Bug and security patterns in the application code itself - things like unsafe use of certain functions, missing input validation, or common mistakes with a known fix |
+| pip-audit | Python dependencies (from `requirements.txt`) with publicly known security vulnerabilities, checked against vulnerability databases |
+| Gitleaks | Secrets accidentally committed to the git history - API keys, passwords, private keys - even if they were later removed in a newer commit |
+| Trivy | The built Docker image itself: both operating-system packages (from the `python:3.11-slim` base image) and Python dependencies, flagged if any have a HIGH or CRITICAL severity vulnerability |
+
+A finding from any of these tools fails the corresponding CI job, so vulnerable or
+unsafe code cannot be merged without the finding being seen and addressed first.
+
 ## Roadmap (planned)
 
 - [ ] Automated tests (pytest) with coverage reporting
 - [x] Dockerfile and docker-compose setup
 - [x] CI pipeline (GitHub Actions) to run the test suite on every push and pull request
 - [ ] Linting in CI
-- [ ] Static security scanning (Semgrep)
-- [ ] Dependency vulnerability scanning (pip-audit)
-- [ ] Secret scanning (Gitleaks)
-- [ ] Container image scanning (Trivy)
+- [x] Static security scanning (Semgrep)
+- [x] Dependency vulnerability scanning (pip-audit)
+- [x] Secret scanning (Gitleaks)
+- [x] Container image scanning (Trivy)
 - [ ] Deployment to a live environment
 
 ## Screenshots

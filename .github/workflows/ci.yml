@@ -49,3 +49,66 @@ jobs:
           SECRET_KEY: ci-test-only-secret-key-do-not-use-in-production
           DATABASE_URL: postgresql+psycopg2://test_user:test_password@localhost:5432/test_securetask
         run: pytest -v --cov=app --cov-report=term-missing
+
+  security-scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out the code
+        # Gitleaks needs full history (not just the latest commit) to scan past
+        # commits for secrets, not just the files as they look right now.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Static analysis with Semgrep
+        # Scans app/ for common bug and security patterns (the "auto" config
+        # picks rules based on the languages it finds). --error makes Semgrep
+        # exit non-zero - and so fail this job - if it reports any finding.
+        run: |
+          pip install semgrep
+          semgrep --config auto app/ --error
+
+      - name: Dependency vulnerability scan with pip-audit
+        # Checks every package pinned in requirements.txt against known
+        # vulnerability databases (the same ones used by PyPI's own advisories).
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: Secret scan with Gitleaks
+        # Scans the whole git history for things that look like committed
+        # secrets - API keys, passwords, private keys - not just the current files.
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker-scan:
+    name: docker-scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t secure-task-app:ci .
+
+      - name: Scan image with Trivy
+        # Looks inside the built image: both OS-level packages (from the
+        # python:3.11-slim base) and the Python dependencies installed into it.
+        # Fails the job if anything HIGH or CRITICAL severity is found.
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: secure-task-app:ci
+          vuln-type: "os,library"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
