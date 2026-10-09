@@ -1,6 +1,6 @@
 # Base image: a small Debian-based image with Python 3.11 already installed.
 # "slim" keeps the image size down compared to the default python image.
-FROM python:3.11-slim
+FROM mirror.gcr.io/library/python:3.11-slim
 
 # Don't write .pyc cache files, and don't buffer stdout/stderr - this makes
 # `docker logs` show output immediately instead of delayed in batches.
