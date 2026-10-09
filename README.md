@@ -1,5 +1,7 @@
 # SecureTask
 
+[![CI](https://github.com/Muskan-3/Secure-Task/actions/workflows/ci.yml/badge.svg)](https://github.com/Muskan-3/Secure-Task/actions/workflows/ci.yml)
+
 A task management API with JWT authentication, built as a DevSecOps CI/CD learning project.
 
 **Repository:** https://github.com/Muskan-3/Secure-Task
@@ -184,7 +186,8 @@ Automated tests are not written yet. See the Roadmap section below.
 
 - [ ] Automated tests (pytest) with coverage reporting
 - [x] Dockerfile and docker-compose setup
-- [ ] CI pipeline (GitHub Actions) to run tests and lint on every push
+- [x] CI pipeline (GitHub Actions) to run the test suite on every push and pull request
+- [ ] Linting in CI
 - [ ] Static security scanning (Semgrep)
 - [ ] Dependency vulnerability scanning (pip-audit)
 - [ ] Secret scanning (Gitleaks)
