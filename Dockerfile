@@ -1,27 +1,57 @@
+# ---- Stage 1: builder ----
 # Base image: a small Debian-based image with Python 3.11 already installed.
 # "slim" keeps the image size down compared to the default python image.
+FROM mirror.gcr.io/library/python:3.11-slim AS builder
+
+# Upgrade pip's own build tooling before it installs anything, so the
+# dependency resolution below uses patched pip/setuptools.
+RUN pip install --no-cache-dir --upgrade pip setuptools
+
+WORKDIR /app
+
+# Install dependencies into an isolated virtual environment rather than the
+# base image's system site-packages, so stage 2 can copy exactly this venv
+# and nothing else build-related (pip caches, apt state, compilers).
+COPY requirements.txt .
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# The app never calls pip/setuptools/wheel at runtime (only uvicorn/fastapi
+# code runs), so drop them from the venv that ships in the final image -
+# this is also what removes the vulnerable vendored copies (urllib3,
+# msgpack, etc.) that pip/setuptools carry.
+RUN /opt/venv/bin/pip uninstall -y pip setuptools wheel
+
+# ---- Stage 2: final runtime image ----
+# Start fresh from the same slim base instead of reusing the builder stage,
+# so none of the builder's pip cache or upgraded-but-unused bootstrap tooling
+# ends up in the image that actually ships.
 FROM mirror.gcr.io/library/python:3.11-slim
 
 # Don't write .pyc cache files, and don't buffer stdout/stderr - this makes
 # `docker logs` show output immediately instead of delayed in batches.
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
-# Copy only requirements.txt first and install it before copying the rest of the
-# code. Docker caches each instruction as a layer; as long as requirements.txt
-# doesn't change, this layer is reused and dependencies aren't reinstalled every
-# time application code changes, making rebuilds much faster.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# The base image's own bootstrap pip/setuptools (installed via ensurepip when
+# this base image was built) are never used here either - the app runs out of
+# the venv copied in below. Remove them so their vendored urllib3/msgpack and
+# outdated setuptools don't show up in image scans.
+RUN rm -rf /usr/local/lib/python3.11/site-packages/pip* \
+           /usr/local/lib/python3.11/site-packages/setuptools* \
+           /usr/local/lib/python3.11/site-packages/wheel* \
+           /usr/local/lib/python3.11/site-packages/pkg_resources* \
+           /usr/local/bin/pip* /usr/local/bin/wheel*
 
-# Upgrade pip's own build tooling (pip, setuptools) to pull in patched versions
-# of their dependencies - this is how known vulnerabilities in jaraco.context
-# and wheel (bundled with older setuptools) get fixed.
-RUN pip install --no-cache-dir --upgrade pip setuptools
+# Copy only the installed virtual environment from the builder - no compilers,
+# no pip cache, no apt lists.
+COPY --from=builder /opt/venv /opt/venv
 
-# Now copy the rest of the application.
+# Now copy the application code.
 COPY . .
 
 # Create a dedicated, unprivileged user and run the app as that user instead of
