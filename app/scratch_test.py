@@ -1,0 +1,1 @@
+﻿aws_secret_key = "AKIAUH5MYWVR1Z2POB8S"
