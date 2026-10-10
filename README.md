@@ -2,129 +2,105 @@
 
 [![CI](https://github.com/Muskan-3/Secure-Task/actions/workflows/ci.yml/badge.svg)](https://github.com/Muskan-3/Secure-Task/actions/workflows/ci.yml)
 
-A task management API with JWT authentication, built as a DevSecOps CI/CD learning project.
+A JWT-authenticated task management API built to demonstrate a complete DevSecOps CI/CD pipeline - automated tests, static analysis, dependency/secret/container scanning, and containerized deployment.
 
+**Live demo:** https://secure-task-aot7.onrender.com/
+**API docs (Swagger UI):** https://secure-task-aot7.onrender.com/docs
 **Repository:** https://github.com/Muskan-3/Secure-Task
-**Live demo:** Coming soon
 
-## About
+## Overview
 
-SecureTask is a small backend project for practicing DevSecOps skills. It is a FastAPI
-service that lets a user register an account, log in, and manage a personal to-do list
-through a REST API. Each user can only see and change their own tasks. The project also
-includes a plain HTML/CSS/JavaScript web interface that talks to the API. Features such
-as containerization, a CI/CD pipeline, automated security scanning, and a deployed demo
-are planned next and are tracked in the Roadmap section below; they are not built yet.
-
-## Features
-
-- User registration and login with hashed passwords
-- JWT-based authentication (30-minute access tokens)
-- Full task management: create, list, view, update, and delete tasks
-- Tasks are private to each user; one user cannot see or modify another user's tasks
-- A `GET /health` endpoint for basic uptime checks
-- A simple web UI (served at `/`) for registering, logging in, and managing tasks
-- Interactive API documentation at `/docs` (generated automatically by FastAPI)
+SecureTask is a small FastAPI backend (register, log in, manage a personal to-do list) used
+as a vehicle to demonstrate a DevSecOps workflow end to end: every push and pull request is
+tested, statically analyzed for insecure code, checked for vulnerable dependencies, scanned
+for leaked secrets, and has its built Docker image scanned for OS/library vulnerabilities -
+before the Docker image itself is built as a multi-stage, non-root image and deployed as a
+containerized service with a managed Postgres database.
 
 ## Tech stack
 
 | Component | Technology | Version |
 |---|---|---|
-| Language | Python | 3.13 |
+| Language | Python | 3.11 |
 | Web framework | FastAPI | 0.143.0 |
-| ASGI server | Uvicorn | 0.54.0 |
+| ASGI server | Uvicorn (standard extras) | 0.54.0 |
+| Data validation | Pydantic | 2.14.0 |
 | Database ORM | SQLAlchemy | 2.1.4 |
-| Database | SQLite (file-based, default) | - |
+| Database (Docker/prod) | PostgreSQL | 16 |
+| Database (local, no Docker) | SQLite (file-based, default) | - |
+| DB driver | psycopg2-binary | 2.9.13 |
 | Auth tokens | PyJWT | 2.15.1 |
 | Password hashing | bcrypt | 5.0.0 |
-| Data validation | Pydantic | 2.14.0 |
 | Form parsing | python-multipart | 0.0.32 |
 | Email validation | email-validator | 2.3.0 |
 | Frontend | Plain HTML, CSS, JavaScript (no framework) | - |
+| Container base image | python:3.11-slim | - |
 
-## Project structure
+## Features
+
+- User registration and login with bcrypt-hashed passwords
+- JWT-based authentication (30-minute access tokens)
+- Full task management: create, list, view, update, and delete tasks
+- Per-user task isolation - one account can never read, edit, or delete another account's
+  tasks (enforced by filtering every query on `owner_id`)
+- `GET /health` endpoint for uptime/readiness checks (used by Docker's own `HEALTHCHECK`)
+- A simple web UI served at `/` for registering, logging in, and managing tasks
+- Interactive API documentation at `/docs` (generated automatically by FastAPI)
+
+## Architecture
 
 ```
-Secure-Task/
-├── app/
-│   ├── __init__.py
-│   ├── main.py          # FastAPI app: routes, startup, serves the web UI
-│   ├── auth_routes.py    # POST /auth/register and POST /auth/login
-│   ├── security.py       # password hashing, JWT creation/validation
-│   ├── models.py         # SQLAlchemy models: User, Task
-│   ├── schemas.py        # Pydantic request/response schemas
-│   ├── database.py       # DB engine, session, get_db dependency
-│   └── static/            # Web UI
-│       ├── index.html
-│       ├── style.css
-│       └── app.js
-├── docs/
-│   └── screenshots/       # UI screenshots (to be added)
-├── .env.example           # Template for required environment variables
-├── .gitignore
-├── .dockerignore
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── requirements-dev.txt
-└── README.md
+                   ┌──────────────┐
+                   │   Browser    │
+                   │ (Web UI /    │
+                   │  Swagger UI) │
+                   └──────┬───────┘
+                          │ HTTPS
+                          ▼
+                   ┌──────────────┐
+                   │   FastAPI    │
+                   │  (Uvicorn)   │
+                   └──────┬───────┘
+                          │ SQL (psycopg2)
+                          ▼
+                   ┌──────────────┐
+                   │  PostgreSQL  │
+                   └──────────────┘
+
+CI/CD (GitHub Actions, on every push/PR to main):
+
+  ┌────────┐      ┌───────────────────┐
+  │  test  │ ───▶ │   security-scan    │
+  │ pytest │  │   │ Semgrep, pip-audit,│
+  │ + cov  │  │   │ Gitleaks           │
+  └────────┘  │   └───────────────────┘
+              │
+              │   ┌───────────────────┐
+              └──▶│    docker-scan     │
+                  │ docker build +     │
+                  │ Trivy image scan   │
+                  └───────────────────┘
+
+Deploy: Render builds this repo's Dockerfile and deploys it as a web service
+(not a step in the GitHub Actions workflow above - triggered by Render's own
+GitHub integration on push to main).
 ```
 
-## Setup (Windows PowerShell)
+## Getting started
+
+Requires Docker Desktop (or another Docker Engine + Compose) installed and running.
 
 ```powershell
 # 1. Clone the repository
 git clone https://github.com/Muskan-3/Secure-Task.git
 cd Secure-Task
 
-# 2. Create a virtual environment
-python -m venv .venv
-
-# 3. Allow the activation script to run in this session, then activate
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-.\.venv\Scripts\Activate.ps1
-
-# 4. Install dependencies
-pip install -r requirements.txt
-
-# 5. Create your local environment file and set a secret key
+# 2. Create your local environment file and fill in real values
 Copy-Item .env.example .env
-# Open .env and replace the placeholder with a long random value, e.g.:
-# python -c "import secrets; print(secrets.token_hex(32))"
-
-# 6. Run the server (--env-file loads SECRET_KEY from .env)
-uvicorn app.main:app --reload --env-file .env
-```
-
-The app will be available at http://127.0.0.1:8000/, with interactive API docs at
-http://127.0.0.1:8000/docs.
-
-All six steps above were run against a fresh clone to confirm they work as written. One
-detail worth knowing: if you start uvicorn without `--env-file .env`, it will not read
-your `.env` file, and the app falls back to an insecure development key (and prints a
-warning). Always include `--env-file .env` for local runs, or set `SECRET_KEY` as a real
-environment variable.
-
-By default the app stores data in a local SQLite file (`securetask.db`), created
-automatically on first run. This file is listed in `.gitignore` and is not committed.
-
-## Run with Docker
-
-This runs the app together with a real PostgreSQL database, both inside containers.
-Requires Docker Desktop to be installed and running.
-
-```powershell
-# 1. Clone the repository (skip if you already have it)
-git clone https://github.com/Muskan-3/Secure-Task.git
-cd Secure-Task
-
-# 2. Create your local environment file and fill in real values:
-#    a random SECRET_KEY, and your own POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
-Copy-Item .env.example .env
-# Generate a key with:
+# Generate a SECRET_KEY with:
 # python -c "import secrets; print(secrets.token_urlsafe(32))"
 
-# 3. Build the images and start both containers in the background
+# 3. Build the images and start the app + Postgres containers
 docker compose up -d --build
 
 # 4. Open the app
@@ -132,18 +108,24 @@ docker compose up -d --build
 #    http://localhost:8000/docs    (API docs)
 #    http://localhost:8000/health  (health check)
 
-# 5. When you're done, stop the containers
+# 5. When you're done
 docker compose down
 ```
 
-`docker compose down` stops and removes the containers but keeps your database data in a
-named Docker volume. Running `docker compose up -d` again brings your data right back.
-Adding `-v` to the down command (`docker compose down -v`) additionally deletes that
-volume and permanently erases the database.
+`docker compose down` keeps your database data in a named Docker volume; add `-v` to also
+delete it.
 
-These exact commands were run against this project to confirm they work, including
-registering a user, logging in, creating a task, and confirming the task survives an
-`app` container restart.
+## Environment variables
+
+Defined in `.env.example`; copy it to `.env` (never commit `.env` - it is gitignored).
+
+| Variable | Used by | Description |
+|---|---|---|
+| `SECRET_KEY` | app | Signing key for JWTs. Must be a long random string; the app logs a warning and falls back to an insecure dev-only key if unset. |
+| `POSTGRES_USER` | docker-compose `db` service | Postgres username created in the `db` container. |
+| `POSTGRES_PASSWORD` | docker-compose `db` service | Postgres password for that user. |
+| `POSTGRES_DB` | docker-compose `db` service | Name of the database created in the `db` container. |
+| `DATABASE_URL` | app | SQLAlchemy connection string. In Docker, points at the `db` service: `postgresql+psycopg2://<user>:<password>@db:5432/<db>`. If unset, the app falls back to a local SQLite file (`securetask.db`). |
 
 ## API endpoints
 
@@ -158,65 +140,68 @@ registering a user, logging in, creating a task, and confirming the task survive
 | PUT | `/tasks/{task_id}` | Yes | Update a task (title, description, and/or completed) |
 | DELETE | `/tasks/{task_id}` | Yes | Delete a task |
 | GET | `/` | No | Serves the web UI |
+| GET | `/static/{path}` | No | Static web UI assets (CSS/JS) |
 | GET | `/docs` | No | Interactive API documentation (Swagger UI) |
 
-Authenticated requests must include an `Authorization: Bearer <token>` header, using the
-token returned by `POST /auth/login`. Requesting or modifying a task that does not belong
-to the current user returns `404 Not Found`, the same response as for a task that does
-not exist at all.
+Authenticated requests use an `Authorization: Bearer <token>` header with the token returned
+by `POST /auth/login`. Requesting or modifying another user's task returns `404 Not Found` -
+identical to a task that doesn't exist, so ownership can't be probed from the response.
 
 ## Running tests
 
-Automated tests are not written yet. See the Roadmap section below.
+```powershell
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -v --cov=app --cov-report=term-missing
+```
 
-## Security notes
+The suite (`tests/`) covers the health check, registration/login, full task CRUD, cross-user
+task isolation (`test_isolation.py`), and that unauthenticated requests to protected routes
+are rejected with `401`. This is the same command CI runs, against a real Postgres service
+container rather than SQLite.
 
-- Passwords are hashed with bcrypt before being stored; the raw password is never saved.
-- Login tokens are signed JWTs that expire after 30 minutes.
-- The JWT signing key is read from the `SECRET_KEY` environment variable, never hardcoded.
-  If it is not set, the app uses a clearly labeled, insecure development fallback and logs
-  a warning, so local runs still work without a real secret being checked into the repo.
-- The web UI never inserts user-provided text with `innerHTML`; it uses `textContent` and
-  DOM creation methods, so task titles and descriptions cannot be used to inject scripts.
-- Every task is tied to the user who created it (`owner_id`). All task endpoints filter by
-  the logged-in user, so one account can never read, edit, or delete another account's
-  tasks.
+## Security practices (implemented in CI)
 
-## Security scanning
+Every push and pull request to `main` runs these checks; a finding in any of them fails the
+corresponding job, so nothing with an unresolved finding merges silently:
 
-The CI pipeline runs four automated security scans on every push and pull request, in
-addition to the test suite. Each one checks for a different kind of problem:
+| Tool | Job | Checks for |
+|---|---|---|
+| Semgrep (`--config auto`) | `security-scan` | Insecure code patterns in `app/` |
+| pip-audit | `security-scan` | Known vulnerabilities in packages pinned in `requirements.txt` |
+| Gitleaks | `security-scan` | Secrets committed anywhere in git history (full checkout, not just HEAD) |
+| Trivy | `docker-scan` | HIGH/CRITICAL, fixable OS and library vulnerabilities in the built Docker image |
 
-| Tool | Checks for |
-|---|---|
-| Semgrep | Bug and security patterns in the application code itself - things like unsafe use of certain functions, missing input validation, or common mistakes with a known fix |
-| pip-audit | Python dependencies (from `requirements.txt`) with publicly known security vulnerabilities, checked against vulnerability databases |
-| Gitleaks | Secrets accidentally committed to the git history - API keys, passwords, private keys - even if they were later removed in a newer commit |
-| Trivy | The built Docker image itself: both operating-system packages (from the `python:3.11-slim` base image) and Python dependencies, flagged if any have a HIGH or CRITICAL severity vulnerability |
+## CI/CD pipeline
 
-A finding from any of these tools fails the corresponding CI job, so vulnerable or
-unsafe code cannot be merged without the finding being seen and addressed first.
+Defined in `.github/workflows/ci.yml`, triggered on every push to `main` and every pull
+request:
 
-## Roadmap (planned)
+1. **test** - checks out the code, sets up Python 3.11 with pip caching, installs
+   `requirements.txt` + `requirements-dev.txt`, and runs `pytest -v --cov=app
+   --cov-report=term-missing` against a real `postgres:16` service container.
+2. **security-scan** (runs after `test` passes) - checks out full git history, then runs
+   Semgrep against `app/`, pip-audit against `requirements.txt`, and Gitleaks against the
+   full commit history.
+3. **docker-scan** (runs after `test` passes, in parallel with `security-scan`) - builds the
+   Docker image (`docker build -t secure-task-app:ci .`), then scans it with Trivy
+   (`vuln-type: os,library`, `severity: HIGH,CRITICAL`, `ignore-unfixed: true`), failing the
+   job on any match.
 
-- [ ] Automated tests (pytest) with coverage reporting
-- [x] Dockerfile and docker-compose setup
-- [x] CI pipeline (GitHub Actions) to run the test suite on every push and pull request
-- [ ] Linting in CI
-- [x] Static security scanning (Semgrep)
-- [x] Dependency vulnerability scanning (pip-audit)
-- [x] Secret scanning (Gitleaks)
-- [x] Container image scanning (Trivy)
-- [ ] Deployment to a live environment
+Deployment is not part of this workflow - see below.
 
-## Screenshots
+## Deployment
 
-Screenshots of the web UI will be added here once the interface is finalized.
+Hosted on Render as a Docker-based web service, built directly from the Dockerfile in this
+repo, with a managed Render PostgreSQL database providing `DATABASE_URL`. Render rebuilds and
+redeploys automatically on every push to `main` via its own GitHub integration, independent
+of the GitHub Actions workflow above.
+
+## Roadmap
+
+<!-- TODO: fill in -->
 
 ## Author
 
 **Muskan Shrivastava**
 
 - GitHub: https://github.com/Muskan-3
-- LinkedIn: https://www.linkedin.com/in/muskan-shrivastava-75b9a2250/
-- Portfolio: https://muskan-portfolio-mr92.onrender.com
