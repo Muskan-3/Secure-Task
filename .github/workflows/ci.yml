@@ -105,10 +105,14 @@ jobs:
       - name: Scan image with Trivy
         # Looks inside the built image: both OS-level packages (from the
         # python:3.11-slim base) and the Python dependencies installed into it.
-        # Fails the job if anything HIGH or CRITICAL severity is found.
+        # Fails the job if anything HIGH or CRITICAL severity is found that
+        # actually has a fix available. --ignore-unfixed skips vulnerabilities
+        # with no patch yet from the upstream OS/package maintainer - failing
+        # the build on those would be pointless, since there's no fix to apply.
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: secure-task-app:ci
           vuln-type: "os,library"
           severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
           exit-code: "1"

@@ -16,6 +16,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Upgrade pip's own build tooling (pip, setuptools) to pull in patched versions
+# of their dependencies - this is how known vulnerabilities in jaraco.context
+# and wheel (bundled with older setuptools) get fixed.
+RUN pip install --no-cache-dir --upgrade pip setuptools
+
 # Now copy the rest of the application.
 COPY . .
 
